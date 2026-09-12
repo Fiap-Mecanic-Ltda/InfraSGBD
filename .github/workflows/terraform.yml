@@ -1,0 +1,123 @@
+name: Terraform - Banco de Dados Gerenciado (RDS)
+
+# Provisiona o RDS SQL Server: instancia, subnet group, security group e a
+# connection string no SSM Parameter Store. A rede vem do repositorio
+# InfraKubernete, lida via terraform_remote_state - por isso aquele stack
+# precisa estar aplicado antes deste.
+on:
+  push:
+    branches: [main, homologacao]
+    paths:
+      - "infra/**"
+      - ".github/workflows/terraform.yml"
+  pull_request:
+    branches: [main, homologacao]
+    paths:
+      - "infra/**"
+      - ".github/workflows/terraform.yml"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "O que rodar (apply exige aprovacao do Environment production)"
+        type: choice
+        default: plan
+        options: [plan, apply]
+
+permissions:
+  contents: read
+
+jobs:
+  # Le os defaults direto do variables.tf, para nao duplicar esses valores como
+  # Repository Variables no GitHub (fonte unica de verdade).
+  read-tf-vars:
+    name: Le variaveis padrao do Terraform
+    runs-on: ubuntu-latest
+    outputs:
+      aws_region: ${{ steps.vars.outputs.aws_region }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extrai defaults do variables.tf
+        id: vars
+        run: |
+          value=$(awk '/variable "aws_region"/,/^}/' infra/variables.tf | grep default | sed -E 's/.*default[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/')
+          if [ -z "$value" ]; then
+            echo "::error::Nao encontrei o default de aws_region em infra/variables.tf"
+            exit 1
+          fi
+          echo "aws_region=$value" >> "$GITHUB_OUTPUT"
+
+  plan:
+    name: Terraform plan
+    needs: read-tf-vars
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    env:
+      TF_VAR_db_engine_version: "15.00.4430.1.v1"
+      TF_VAR_db_master_password: ${{ secrets.SA_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Chave estatica do terraform-deployer: e a mesma identidade que le o
+      # state remoto do stack de Kubernetes (terraform_remote_state).
+      - name: Configura credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ needs.read-tf-vars.outputs.aws_region }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.10"
+
+      - name: Terraform fmt (check)
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        run: terraform plan -input=false
+
+  apply:
+    name: Terraform apply
+    needs: [read-tf-vars, plan]
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: infra
+    env:
+      TF_VAR_db_engine_version: "15.00.4430.1.v1"
+      TF_VAR_db_master_password: ${{ secrets.SA_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configura credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ needs.read-tf-vars.outputs.aws_region }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.10"
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform apply
+        run: terraform apply -input=false -auto-approve
+
+      # Depois de recriar o banco, a aplicacao precisa de um novo rollout para
+      # reler a connection string do SSM (workflow de deploy no InfraKubernete).
+      - name: Outputs
+        run: terraform output

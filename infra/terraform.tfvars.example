@@ -1,0 +1,8 @@
+# Copie para terraform.tfvars com valores reais. Nunca commite o real.
+# A senha aqui precisa ser a MESMA ja usada pelo RDS existente - este stack
+# assume o banco que ja estava no repositorio de infraestrutura de Kubernetes
+# (ver README: migracao do state por import).
+
+db_engine_version  = "15.00.4430.1.v1"
+db_master_username = "mechanicltda_admin"
+db_master_password = "CHANGE_ME_STRONG_PASSWORD"
