@@ -12,7 +12,7 @@ terraform {
   # Mesmo bucket do stack de Kubernetes, chave diferente: os dois states sao
   # independentes (este pode ser aplicado/destruido sem tocar no cluster).
   backend "s3" {
-    bucket       = "mechanicltda-terraform-state-430606112709"
+    bucket       = "mechanicltda-terraform-state-788516091173"
     key          = "prod/sgbd/terraform.tfstate"
     region       = "us-east-1"
     encrypt      = true

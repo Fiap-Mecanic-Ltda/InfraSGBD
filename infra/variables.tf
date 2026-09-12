@@ -19,7 +19,7 @@ variable "environment" {
 variable "kubernetes_state_bucket" {
   type        = string
   description = "Bucket S3 com o state do stack de infraestrutura de Kubernetes."
-  default     = "mechanicltda-terraform-state-430606112709"
+  default     = "mechanicltda-terraform-state-788516091173"
 }
 
 variable "kubernetes_state_key" {
