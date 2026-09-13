@@ -102,5 +102,14 @@ no workflow (`15.00.4430.1.v1`), e `aws_region`/`project_name`/`environment` sae
 ## Fluxo de trabalho no Git
 
 A branch de trabalho é **`homologacao`**; nada é commitado direto na `main` — a `main` recebe
-mudanças por Pull Request. O workflow roda `plan` nas duas branches; o `apply` é sempre manual
-(`workflow_dispatch` + Environment `production`).
+mudanças por Pull Request.
+
+| Branch | O que roda (quando `infra/**` muda) |
+|---|---|
+| PR para `homologacao` ou `main` | `plan` |
+| push em `homologacao` | `plan` — não há ambiente de homologação na AWS |
+| push em `main` | `plan` e **`apply` automático** no Environment `production` |
+
+O `apply` manual (`workflow_dispatch`) continua disponível, mas só a partir da `main`. Configure
+revisores obrigatórios no Environment `production`: recriar o RDS apaga os dados (este projeto não
+guarda snapshot final), e com revisores o apply espera a aprovação depois do `plan` do mesmo run.

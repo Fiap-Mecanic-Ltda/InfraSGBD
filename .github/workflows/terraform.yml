@@ -4,6 +4,13 @@ name: Terraform - Banco de Dados Gerenciado (RDS)
 # connection string no SSM Parameter Store. A rede vem do repositorio
 # InfraKubernete, lida via terraform_remote_state - por isso aquele stack
 # precisa estar aplicado antes deste.
+#
+# - homologacao: plan a cada mudanca em infra/. Nao ha ambiente de homologacao
+#   na AWS (decisao do time), entao nada e aplicado a partir desta branch.
+# - main: plan e apply AUTOMATICO a cada mudanca em infra/. O job de apply usa o
+#   Environment "production": com revisores obrigatorios configurados, o apply
+#   espera aprovacao depois do plan. Recriar o RDS apaga os dados (sem snapshot
+#   final neste projeto), entao revise o plan antes de aprovar.
 on:
   push:
     branches: [main, homologacao]
@@ -88,9 +95,18 @@ jobs:
   apply:
     name: Terraform apply
     needs: [read-tf-vars, plan]
-    if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
+    # Automatico em push na main; manual (workflow_dispatch) so a partir da
+    # main. Sem ambiente de homologacao, aplicar outra branch mexeria no banco
+    # de producao com codigo nao revisado.
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && inputs.action == 'apply'))
     runs-on: ubuntu-latest
     environment: production
+    concurrency:
+      group: terraform-apply-sgbd-prod
+      cancel-in-progress: false
     defaults:
       run:
         working-directory: infra
